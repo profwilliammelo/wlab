@@ -8,7 +8,7 @@ const Footer = () => {
                     &copy; {new Date().getFullYear()} Prof. William Melo. Todos os direitos reservados.
                 </p>
                 <p className="text-xs text-academic-brown/50 dark:text-academic-pink/40 mt-2">
-                    Desenvolvido por DrWilliam Melo.
+                    Desenvolvido por Dr. William Melo.
                 </p>
             </div>
         </footer>

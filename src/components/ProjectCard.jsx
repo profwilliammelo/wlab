@@ -1,7 +1,7 @@
 import React from 'react';
-import { ExternalLink, Calendar, Star, FlaskConical } from 'lucide-react';
+import { ExternalLink, Calendar, FlaskConical, Gamepad2 } from 'lucide-react';
 
-const ProjectCard = ({ project }) => {
+const ProjectCard = ({ project, onNavigate }) => {
     const isFeatured = project.is_featured;
 
     // Status Colors
@@ -12,6 +12,27 @@ const ProjectCard = ({ project }) => {
             default: return 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300 border-gray-200 dark:border-gray-700';
         }
     };
+
+    const handleLinkClick = (e) => {
+        if (project.access_link === '#games') {
+            e.preventDefault();
+            if (onNavigate) {
+                onNavigate('games');
+            }
+        }
+    };
+
+    // Helper to format href correctly
+    const getHref = () => {
+        if (!project.access_link) return null;
+        if (project.access_link === '#games') return '#games';
+        if (project.access_link.startsWith('http') || project.access_link.startsWith('/')) {
+            return project.access_link;
+        }
+        return `https://${project.access_link}`;
+    };
+
+    const href = getHref();
 
     return (
         <div
@@ -58,14 +79,23 @@ const ProjectCard = ({ project }) => {
                     {project.type}
                 </span>
 
-                {project.access_link && (
+                {href && (
                     <a
-                        href={project.access_link.startsWith('http') ? project.access_link : `https://${project.access_link}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
+                        href={href}
+                        onClick={handleLinkClick}
+                        target={href === '#games' ? '_self' : '_blank'}
+                        rel={href === '#games' ? '' : "noopener noreferrer"}
                         className="flex items-center gap-1 text-sm font-medium text-academic-brown dark:text-academic-pink hover:text-academic-gold dark:hover:text-academic-gold transition-colors"
                     >
-                        Acessar <ExternalLink className="w-4 h-4" />
+                        {href === '#games' ? (
+                            <>
+                                Ver Jogos <Gamepad2 className="w-4 h-4" />
+                            </>
+                        ) : (
+                            <>
+                                Acessar <ExternalLink className="w-4 h-4" />
+                            </>
+                        )}
                     </a>
                 )}
             </div>

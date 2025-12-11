@@ -4,7 +4,7 @@ import ProjectCard from './ProjectCard';
 import { exportToCSV } from '../utils/exportToCSV';
 import { LayoutGrid, List, Download, Loader2 } from 'lucide-react';
 
-const ProjectsSection = () => {
+const ProjectsSection = ({ onNavigate }) => {
     const [projects, setProjects] = useState([]);
     const [loading, setLoading] = useState(true);
     const [viewMode, setViewMode] = useState('grid'); // 'grid' | 'table'
@@ -83,7 +83,7 @@ const ProjectsSection = () => {
                     {viewMode === 'grid' ? (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                             {projects.map((proj) => (
-                                <ProjectCard key={proj.id} project={proj} />
+                                <ProjectCard key={proj.id} project={proj} onNavigate={onNavigate} />
                             ))}
                         </div>
                     ) : (

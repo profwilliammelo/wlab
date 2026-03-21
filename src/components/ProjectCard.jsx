@@ -1,10 +1,10 @@
 import React from 'react';
-import { ExternalLink, Calendar, FlaskConical, Gamepad2 } from 'lucide-react';
+import { ExternalLink, Calendar, FlaskConical, Gamepad2, Image } from 'lucide-react';
 
 const ProjectCard = ({ project, onNavigate }) => {
     const isFeatured = project.is_featured;
+    const hasImage = !!project.featured_image_url;
 
-    // Status Colors
     const getStatusColor = (status) => {
         switch (status?.toLowerCase()) {
             case 'ativo': return 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800';
@@ -13,16 +13,23 @@ const ProjectCard = ({ project, onNavigate }) => {
         }
     };
 
-    const handleLinkClick = (e) => {
+    const handleCardClick = (e) => {
+        // Não navegar se clicou num link interno
+        if (e.target.closest('a')) return;
         if (project.access_link === '#games') {
-            e.preventDefault();
-            if (onNavigate) {
-                onNavigate('games');
-            }
+            if (onNavigate) onNavigate('games');
+        } else if (onNavigate) {
+            onNavigate('item', { type: 'project', id: project.id });
         }
     };
 
-    // Helper to format href correctly
+    const handleLinkClick = (e) => {
+        if (project.access_link === '#games') {
+            e.preventDefault();
+            if (onNavigate) onNavigate('games');
+        }
+    };
+
     const getHref = () => {
         if (!project.access_link) return null;
         if (project.access_link === '#games') return '#games';
@@ -36,68 +43,86 @@ const ProjectCard = ({ project, onNavigate }) => {
 
     return (
         <div
+            onClick={handleCardClick}
             className={`
-        group relative flex flex-col p-6 rounded-xl border transition-all duration-300 hover:shadow-xl
-        ${isFeatured
+                group relative flex flex-col rounded-xl border transition-all duration-300 hover:shadow-xl cursor-pointer overflow-hidden
+                ${isFeatured
                     ? 'bg-gradient-to-br from-academic-light to-white dark:from-academic-brown dark:to-academic-dark border-academic-gold shadow-lg transform hover:-translate-y-1'
                     : 'bg-white dark:bg-academic-brown/40 border-academic-gold/20 hover:border-academic-gold/50 hover:bg-academic-light/50 dark:hover:bg-academic-brown/60'
                 }
-      `}
+            `}
         >
             {isFeatured && (
-                <div className="absolute -top-3 -right-3">
+                <div className="absolute top-3 right-3 z-10">
                     <span className="relative flex h-8 w-8 items-center justify-center rounded-full bg-academic-gold text-academic-dark shadow-md">
                         <FlaskConical className="h-5 w-5" />
                     </span>
                 </div>
             )}
 
-            <div className="mb-4">
-                <div className="flex justify-between items-start mb-2">
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium border ${getStatusColor(project.status)}`}>
-                        {project.status || 'Indefinido'}
-                    </span>
-                    {project.year && (
-                        <div className="flex items-center text-xs text-academic-brown/60 dark:text-academic-pink/60">
-                            <Calendar className="w-3 h-3 mr-1" />
-                            {project.year}
-                        </div>
-                    )}
+            {/* Imagem de destaque */}
+            {hasImage && (
+                <div className="relative w-full aspect-video overflow-hidden bg-academic-light dark:bg-academic-dark">
+                    <img
+                        src={project.featured_image_url}
+                        alt={project.title}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                        onError={(e) => {
+                            e.currentTarget.parentElement.style.display = 'none';
+                        }}
+                    />
+                </div>
+            )}
+
+            <div className={`flex flex-col flex-1 ${hasImage ? 'p-5' : 'p-6'}`}>
+                <div className="mb-4">
+                    <div className="flex justify-between items-start mb-2">
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium border ${getStatusColor(project.status)}`}>
+                            {project.status || 'Indefinido'}
+                        </span>
+                        {project.year && (
+                            <div className="flex items-center text-xs text-academic-brown/60 dark:text-academic-pink/60">
+                                <Calendar className="w-3 h-3 mr-1" />
+                                {project.year}
+                            </div>
+                        )}
+                    </div>
+
+                    <h3 className={`font-serif font-bold mb-2 text-academic-dark dark:text-academic-light ${isFeatured ? 'text-2xl' : 'text-xl'}`}>
+                        {project.title}
+                    </h3>
+
+                    <p className="text-sm text-academic-brown/80 dark:text-academic-pink/80 line-clamp-4 leading-relaxed">
+                        {project.summary || 'Sem descrição disponível.'}
+                    </p>
                 </div>
 
-                <h3 className={`font-serif font-bold mb-2 text-academic-dark dark:text-academic-light ${isFeatured ? 'text-2xl' : 'text-xl'}`}>
-                    {project.title}
-                </h3>
-
-                <p className="text-sm text-academic-brown/80 dark:text-academic-pink/80 line-clamp-4 leading-relaxed">
-                    {project.summary || 'Sem descrição disponível.'}
-                </p>
-            </div>
-
-            <div className="mt-auto pt-4 border-t border-academic-gold/10 flex flex-wrap gap-2 justify-between items-center">
-                <span className="text-xs font-semibold uppercase tracking-wider text-academic-gold">
-                    {project.type}
-                </span>
-
-                {href && (
-                    <a
-                        href={href}
-                        onClick={handleLinkClick}
-                        target={href === '#games' ? '_self' : '_blank'}
-                        rel={href === '#games' ? '' : "noopener noreferrer"}
-                        className="flex items-center gap-1 text-sm font-medium text-academic-brown dark:text-academic-pink hover:text-academic-gold dark:hover:text-academic-gold transition-colors"
-                    >
-                        {href === '#games' ? (
-                            <>
-                                Ver Jogos <Gamepad2 className="w-4 h-4" />
-                            </>
-                        ) : (
-                            <>
-                                Acessar <ExternalLink className="w-4 h-4" />
-                            </>
+                <div className="mt-auto pt-4 border-t border-academic-gold/10 flex flex-wrap gap-2 justify-between items-center">
+                    <div className="flex items-center gap-2">
+                        <span className="text-xs font-semibold uppercase tracking-wider text-academic-gold">
+                            {project.type}
+                        </span>
+                        {project.embed_code && (
+                            <span className="text-xs text-academic-brown/40 dark:text-academic-pink/30">&lt;/&gt;</span>
                         )}
-                    </a>
-                )}
+                    </div>
+
+                    {href && (
+                        <a
+                            href={href}
+                            onClick={handleLinkClick}
+                            target={href === '#games' ? '_self' : '_blank'}
+                            rel={href === '#games' ? '' : 'noopener noreferrer'}
+                            className="flex items-center gap-1 text-sm font-medium text-academic-brown dark:text-academic-pink hover:text-academic-gold dark:hover:text-academic-gold transition-colors"
+                        >
+                            {href === '#games' ? (
+                                <>Ver Jogos <Gamepad2 className="w-4 h-4" /></>
+                            ) : (
+                                <>Acessar <ExternalLink className="w-4 h-4" /></>
+                            )}
+                        </a>
+                    )}
+                </div>
             </div>
         </div>
     );

@@ -13,7 +13,7 @@ import { ArrowDown } from 'lucide-react';
 const Home = ({ onNavigate }) => {
     return (
         <>
-            <Header />
+            <Header onNavigate={onNavigate} />
 
             {/* Hero Section */}
             <section className="relative pt-32 pb-20 px-4 flex flex-col items-center justify-center min-h-screen text-center overflow-hidden">
@@ -88,7 +88,7 @@ const Home = ({ onNavigate }) => {
 
             {/* Bibliography Section */}
             <div id="bibliography">
-                <BibliographySection />
+                <BibliographySection onNavigate={onNavigate} />
             </div>
 
             {/* Testimonials Section */}

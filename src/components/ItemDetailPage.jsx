@@ -19,6 +19,9 @@ const RESIZE_SCRIPT = `<script>
 })();
 </script>`;
 
+// Fallback CSS: garante que .hidden funcione mesmo se o Tailwind CDN falhar ao carregar
+const HIDDEN_FALLBACK = `<style>.hidden{display:none!important}</style>`;
+
 // Remove scripts que não funcionam fora do ambiente de origem (Gemini SDKs, Cloudflare challenge)
 const sanitizeEmbedCode = (code) => code
   .replace(/<script[^>]+src=["']\/(_sdk\/[^"']+|cdn-cgi\/[^"']+)["'][^>]*><\/script>/gi, '')
@@ -42,9 +45,12 @@ const SafeEmbed = ({ code }) => {
   if (!code?.trim()) return null;
 
   const cleaned = sanitizeEmbedCode(code);
-  const srcDoc = cleaned.includes('</body>')
-    ? cleaned.replace('</body>', RESIZE_SCRIPT + '</body>')
-    : cleaned + RESIZE_SCRIPT;
+  const withFallback = cleaned.includes('<head>')
+    ? cleaned.replace('<head>', '<head>' + HIDDEN_FALLBACK)
+    : HIDDEN_FALLBACK + cleaned;
+  const srcDoc = withFallback.includes('</body>')
+    ? withFallback.replace('</body>', RESIZE_SCRIPT + '</body>')
+    : withFallback + RESIZE_SCRIPT;
 
   return (
     <div className="mt-6">
@@ -57,7 +63,7 @@ const SafeEmbed = ({ code }) => {
           srcDoc={srcDoc}
           sandbox="allow-scripts allow-popups allow-forms"
           referrerPolicy="no-referrer"
-          style={{ height: `${height}px` }}
+          style={{ height: `${height}px`, background: 'white' }}
           className="w-full transition-[height] duration-300"
           title="Conteúdo incorporado"
           loading="lazy"

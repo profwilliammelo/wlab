@@ -6,10 +6,18 @@ import ExuMode from './components/ExuMode';
 import { ThemeContext } from './context/ThemeContext';
 import { AuthProvider } from './context/AuthContext';
 
+function parseUrlView() {
+  const hash = window.location.hash;
+  const itemMatch = hash.match(/^#item-(project|bibliography)-(\d+)$/);
+  if (window.location.pathname === '/exu' || hash === '#exu') return 'exu';
+  if (itemMatch) return { view: 'item', type: itemMatch[1], id: parseInt(itemMatch[2]) };
+  if (hash === '#games') return 'games';
+  return 'home';
+}
+
 function AppContent() {
   const { isDark } = useContext(ThemeContext);
-  // currentView pode ser: 'home' | 'games' | 'exu' | { view: 'item', type, id }
-  const [currentView, setCurrentView] = useState('home');
+  const [currentView, setCurrentView] = useState(parseUrlView);
 
   useEffect(() => {
     const handlePopState = (event) => {
@@ -19,23 +27,10 @@ function AppContent() {
           : event.state.view
         );
       } else {
-        setCurrentView('home');
+        setCurrentView(parseUrlView());
       }
     };
-
     window.addEventListener('popstate', handlePopState);
-
-    // Verificar URL inicial
-    const hash = window.location.hash;
-    const itemMatch = hash.match(/^#item-(project|bibliography)-(\d+)$/);
-    if (window.location.pathname === '/exu' || hash === '#exu') {
-      setCurrentView('exu');
-    } else if (itemMatch) {
-      setCurrentView({ view: 'item', type: itemMatch[1], id: parseInt(itemMatch[2]) });
-    } else if (hash === '#games') {
-      setCurrentView('games');
-    }
-
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 

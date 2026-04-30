@@ -25,9 +25,15 @@ function AppContent() {
 
     window.addEventListener('popstate', handlePopState);
 
-    // Verificar URL inicial para rota /exu
-    if (window.location.pathname === '/exu' || window.location.hash === '#exu') {
+    // Verificar URL inicial
+    const hash = window.location.hash;
+    const itemMatch = hash.match(/^#item-(project|bibliography)-(\d+)$/);
+    if (window.location.pathname === '/exu' || hash === '#exu') {
       setCurrentView('exu');
+    } else if (itemMatch) {
+      setCurrentView({ view: 'item', type: itemMatch[1], id: parseInt(itemMatch[2]) });
+    } else if (hash === '#games') {
+      setCurrentView('games');
     }
 
     return () => window.removeEventListener('popstate', handlePopState);

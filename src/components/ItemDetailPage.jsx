@@ -19,6 +19,11 @@ const RESIZE_SCRIPT = `<script>
 })();
 </script>`;
 
+// Remove scripts que não funcionam fora do ambiente de origem (Gemini SDKs, Cloudflare challenge)
+const sanitizeEmbedCode = (code) => code
+  .replace(/<script[^>]+src=["']\/(_sdk\/[^"']+|cdn-cgi\/[^"']+)["'][^>]*><\/script>/gi, '')
+  .replace(/<script[^>]*>[\s\S]*?__CF\$cv\$params[\s\S]*?<\/script>/gi, '');
+
 // Componente seguro para renderizar embeds HTML
 const SafeEmbed = ({ code }) => {
   const iframeRef = useRef(null);
@@ -36,9 +41,10 @@ const SafeEmbed = ({ code }) => {
 
   if (!code?.trim()) return null;
 
-  const srcDoc = code.includes('</body>')
-    ? code.replace('</body>', RESIZE_SCRIPT + '</body>')
-    : code + RESIZE_SCRIPT;
+  const cleaned = sanitizeEmbedCode(code);
+  const srcDoc = cleaned.includes('</body>')
+    ? cleaned.replace('</body>', RESIZE_SCRIPT + '</body>')
+    : cleaned + RESIZE_SCRIPT;
 
   return (
     <div className="mt-6">

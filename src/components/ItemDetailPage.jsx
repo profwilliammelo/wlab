@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { ArrowLeft, ExternalLink, Calendar, Loader2, BookOpen, FlaskConical } from 'lucide-react';
 
@@ -10,9 +10,36 @@ const getStatusColor = (status) => {
   }
 };
 
+const RESIZE_SCRIPT = `<script>
+(function(){
+  function report(){window.parent.postMessage({__iframeH:document.documentElement.scrollHeight},'*');}
+  window.addEventListener('load',report);
+  new MutationObserver(report).observe(document.documentElement,{childList:true,subtree:true,attributes:true,characterData:true});
+  window.addEventListener('resize',report);
+})();
+</script>`;
+
 // Componente seguro para renderizar embeds HTML
 const SafeEmbed = ({ code }) => {
+  const iframeRef = useRef(null);
+  const [height, setHeight] = useState(350);
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.source === iframeRef.current?.contentWindow && e.data?.__iframeH) {
+        setHeight(Math.max(200, e.data.__iframeH));
+      }
+    };
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+  }, []);
+
   if (!code?.trim()) return null;
+
+  const srcDoc = code.includes('</body>')
+    ? code.replace('</body>', RESIZE_SCRIPT + '</body>')
+    : code + RESIZE_SCRIPT;
+
   return (
     <div className="mt-6">
       <h3 className="font-serif font-bold text-lg text-academic-dark dark:text-academic-light mb-3">
@@ -20,10 +47,12 @@ const SafeEmbed = ({ code }) => {
       </h3>
       <div className="rounded-xl overflow-hidden border border-academic-gold/20 bg-black/5 dark:bg-white/5">
         <iframe
-          srcDoc={code}
+          ref={iframeRef}
+          srcDoc={srcDoc}
           sandbox="allow-scripts allow-popups allow-forms"
           referrerPolicy="no-referrer"
-          className="w-full min-h-[350px] md:min-h-[450px]"
+          style={{ height: `${height}px` }}
+          className="w-full transition-[height] duration-300"
           title="Conteúdo incorporado"
           loading="lazy"
         />

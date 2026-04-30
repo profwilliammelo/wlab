@@ -25,7 +25,9 @@ const HIDDEN_FALLBACK = `<style>.hidden{display:none!important}</style>`;
 // Remove scripts que não funcionam fora do ambiente de origem (Gemini SDKs, Cloudflare challenge)
 const sanitizeEmbedCode = (code) => code
   .replace(/<script[^>]+src=["']\/(_sdk\/[^"']+|cdn-cgi\/[^"']+)["'][^>]*><\/script>/gi, '')
-  .replace(/<script[^>]*>[\s\S]*?__CF\$cv\$params[\s\S]*?<\/script>/gi, '');
+  .replace(/<script[^>]*>[\s\S]*?<\/script>/g, m =>
+    m.includes('__CF$cv$params') ? '' : m
+  );
 
 // Componente seguro para renderizar embeds HTML
 const SafeEmbed = ({ code }) => {

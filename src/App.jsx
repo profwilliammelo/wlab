@@ -8,9 +8,9 @@ import { AuthProvider } from './context/AuthContext';
 
 function parseUrlView() {
   const hash = window.location.hash;
-  const itemMatch = hash.match(/^#item-(project|bibliography)-(\d+)$/);
+  const itemMatch = hash.match(/^#item-(project|bibliography)-([a-zA-Z0-9-]+)$/);
   if (window.location.pathname === '/exu' || hash === '#exu') return 'exu';
-  if (itemMatch) return { view: 'item', type: itemMatch[1], id: parseInt(itemMatch[2]) };
+  if (itemMatch) return { view: 'item', type: itemMatch[1], id: itemMatch[2] };
   if (hash === '#games') return 'games';
   return 'home';
 }

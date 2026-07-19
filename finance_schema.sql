@@ -1,0 +1,121 @@
+-- =====================================================================
+--  APP FINANCEIRO PESSOAL — Schema Supabase
+--  Prefixo `fin_` para conviver com as tabelas do site profwilliammelo
+--  no mesmo banco compartilhado.
+--
+--  Rode este script UMA VEZ no SQL Editor do projeto Supabase do site.
+--  Todas as tabelas usam Row Level Security: cada usuário só enxerga e
+--  edita as próprias linhas (user_id = auth.uid()).
+-- =====================================================================
+
+-- ---------------------------------------------------------------------
+-- 1) CAIXINHAS (envelopes de provisionamento)
+-- ---------------------------------------------------------------------
+create table if not exists public.fin_boxes (
+  id              uuid primary key default gen_random_uuid(),
+  user_id         uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  name            text not null,
+  goal_amount     numeric(12,2) not null default 0,
+  current_amount  numeric(12,2) not null default 0,
+  color           text not null default '#b45309',
+  icon            text not null default 'piggy-bank',
+  sort_order      integer not null default 0,
+  created_at      timestamptz not null default now(),
+  updated_at      timestamptz not null default now()
+);
+
+-- ---------------------------------------------------------------------
+-- 2) TRANSAÇÕES (receitas e despesas — reais e projetadas)
+-- ---------------------------------------------------------------------
+create table if not exists public.fin_transactions (
+  id            uuid primary key default gen_random_uuid(),
+  user_id       uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  occurred_on   date not null,
+  description   text not null,
+  category      text not null default 'Geral',
+  kind          text not null check (kind in ('income','expense')),
+  amount        numeric(12,2) not null check (amount >= 0),
+  is_fixed      boolean not null default false,   -- despesa/receita fixa recorrente
+  is_projected  boolean not null default true,    -- projeção x realizado
+  box_id        uuid references public.fin_boxes (id) on delete set null,
+  created_at    timestamptz not null default now(),
+  updated_at    timestamptz not null default now()
+);
+
+create index if not exists fin_transactions_user_date_idx
+  on public.fin_transactions (user_id, occurred_on);
+
+-- ---------------------------------------------------------------------
+-- 3) CONFIGURAÇÕES / METAS (key-value por usuário)
+-- ---------------------------------------------------------------------
+create table if not exists public.fin_settings (
+  id          uuid primary key default gen_random_uuid(),
+  user_id     uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  key         text not null,
+  value       jsonb not null default '{}'::jsonb,
+  updated_at  timestamptz not null default now(),
+  unique (user_id, key)
+);
+
+-- ---------------------------------------------------------------------
+-- 4) trigger de updated_at
+-- ---------------------------------------------------------------------
+create or replace function public.fin_touch_updated_at()
+returns trigger language plpgsql as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_fin_boxes_touch on public.fin_boxes;
+create trigger trg_fin_boxes_touch before update on public.fin_boxes
+  for each row execute function public.fin_touch_updated_at();
+
+drop trigger if exists trg_fin_transactions_touch on public.fin_transactions;
+create trigger trg_fin_transactions_touch before update on public.fin_transactions
+  for each row execute function public.fin_touch_updated_at();
+
+drop trigger if exists trg_fin_settings_touch on public.fin_settings;
+create trigger trg_fin_settings_touch before update on public.fin_settings
+  for each row execute function public.fin_touch_updated_at();
+
+-- ---------------------------------------------------------------------
+-- 5) Row Level Security — dono da linha faz tudo, ninguém mais vê nada
+-- ---------------------------------------------------------------------
+alter table public.fin_boxes        enable row level security;
+alter table public.fin_transactions enable row level security;
+alter table public.fin_settings     enable row level security;
+
+do $$
+begin
+  -- fin_boxes
+  if not exists (select 1 from pg_policies where policyname = 'fin_boxes_owner_all') then
+    create policy fin_boxes_owner_all on public.fin_boxes
+      for all to authenticated
+      using (user_id = auth.uid())
+      with check (user_id = auth.uid());
+  end if;
+
+  -- fin_transactions
+  if not exists (select 1 from pg_policies where policyname = 'fin_transactions_owner_all') then
+    create policy fin_transactions_owner_all on public.fin_transactions
+      for all to authenticated
+      using (user_id = auth.uid())
+      with check (user_id = auth.uid());
+  end if;
+
+  -- fin_settings
+  if not exists (select 1 from pg_policies where policyname = 'fin_settings_owner_all') then
+    create policy fin_settings_owner_all on public.fin_settings
+      for all to authenticated
+      using (user_id = auth.uid())
+      with check (user_id = auth.uid());
+  end if;
+end $$;
+
+-- =====================================================================
+--  Pronto. O app popula o cenário inicial (Ago/2026 em diante) na
+--  primeira vez que você abre o dashboard logado — nenhum seed manual
+--  é necessário aqui, pois cada linha precisa do seu auth.uid().
+-- =====================================================================

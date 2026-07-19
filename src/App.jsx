@@ -3,6 +3,7 @@ import Home from './components/Home';
 import GamesGallery from './components/GamesGallery';
 import ItemDetailPage from './components/ItemDetailPage';
 import ExuMode from './components/ExuMode';
+import Finance from './components/Finance';
 import { ThemeContext } from './context/ThemeContext';
 import { AuthProvider } from './context/AuthContext';
 
@@ -10,6 +11,7 @@ function parseUrlView() {
   const hash = window.location.hash;
   const itemMatch = hash.match(/^#item-(project|bibliography)-([a-zA-Z0-9-]+)$/);
   if (window.location.pathname === '/exu' || hash === '#exu') return 'exu';
+  if (window.location.pathname === '/financas' || hash === '#financas') return 'financas';
   if (itemMatch) return { view: 'item', type: itemMatch[1], id: itemMatch[2] };
   if (hash === '#games') return 'games';
   return 'home';
@@ -42,6 +44,9 @@ function AppContent() {
     } else if (view === 'exu') {
       window.history.pushState({ view: 'exu' }, '', '/exu');
       setCurrentView('exu');
+    } else if (view === 'financas') {
+      window.history.pushState({ view: 'financas' }, '', '/financas');
+      setCurrentView('financas');
     } else {
       window.history.pushState({ view }, '', view === 'home' ? '/' : `#${view}`);
       setCurrentView(view);
@@ -62,6 +67,7 @@ function AppContent() {
       {viewName === 'home' && <Home onNavigate={navigateTo} />}
       {viewName === 'games' && <GamesGallery onBack={goHome} />}
       {viewName === 'exu' && <ExuMode onBack={goHome} />}
+      {viewName === 'financas' && <Finance onBack={goHome} />}
       {viewName === 'item' && (
         <div>
           {/* Header mínimo para páginas de detalhe */}

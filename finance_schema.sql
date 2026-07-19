@@ -81,38 +81,40 @@ create trigger trg_fin_settings_touch before update on public.fin_settings
   for each row execute function public.fin_touch_updated_at();
 
 -- ---------------------------------------------------------------------
--- 5) Row Level Security — dono da linha faz tudo, ninguém mais vê nada
+-- 5) Row Level Security — DEFESA EM CAMADAS
+--
+--    Regra: só o ADMIN do site (public.is_admin(), a mesma função que o
+--    Modo Exu já usa) E dono da linha (user_id = auth.uid()) pode ler ou
+--    escrever. Consequências:
+--      • anônimo (sem login) ............ bloqueado (políticas são `to authenticated`)
+--      • logado que NÃO é admin ......... bloqueado (is_admin() = false)
+--      • admin (você) ................... só enxerga/edita as próprias linhas
+--    Ou seja: mesmo que alguém consiga uma sessão válida, não toca em nada.
 -- ---------------------------------------------------------------------
 alter table public.fin_boxes        enable row level security;
 alter table public.fin_transactions enable row level security;
 alter table public.fin_settings     enable row level security;
 
-do $$
-begin
-  -- fin_boxes
-  if not exists (select 1 from pg_policies where policyname = 'fin_boxes_owner_all') then
-    create policy fin_boxes_owner_all on public.fin_boxes
-      for all to authenticated
-      using (user_id = auth.uid())
-      with check (user_id = auth.uid());
-  end if;
+-- Recria as políticas de forma idempotente (drop + create) para garantir a
+-- versão endurecida mesmo se uma versão anterior mais permissiva já existir.
+drop policy if exists fin_boxes_owner_all        on public.fin_boxes;
+drop policy if exists fin_transactions_owner_all on public.fin_transactions;
+drop policy if exists fin_settings_owner_all     on public.fin_settings;
 
-  -- fin_transactions
-  if not exists (select 1 from pg_policies where policyname = 'fin_transactions_owner_all') then
-    create policy fin_transactions_owner_all on public.fin_transactions
-      for all to authenticated
-      using (user_id = auth.uid())
-      with check (user_id = auth.uid());
-  end if;
+create policy fin_boxes_admin_owner on public.fin_boxes
+  for all to authenticated
+  using (user_id = auth.uid() and public.is_admin())
+  with check (user_id = auth.uid() and public.is_admin());
 
-  -- fin_settings
-  if not exists (select 1 from pg_policies where policyname = 'fin_settings_owner_all') then
-    create policy fin_settings_owner_all on public.fin_settings
-      for all to authenticated
-      using (user_id = auth.uid())
-      with check (user_id = auth.uid());
-  end if;
-end $$;
+create policy fin_transactions_admin_owner on public.fin_transactions
+  for all to authenticated
+  using (user_id = auth.uid() and public.is_admin())
+  with check (user_id = auth.uid() and public.is_admin());
+
+create policy fin_settings_admin_owner on public.fin_settings
+  for all to authenticated
+  using (user_id = auth.uid() and public.is_admin())
+  with check (user_id = auth.uid() and public.is_admin());
 
 -- =====================================================================
 --  Pronto. O app popula o cenário inicial (Ago/2026 em diante) na

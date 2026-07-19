@@ -1,10 +1,17 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import ExuTableEditor from './ExuTableEditor';
-import { LogOut, Database } from 'lucide-react';
+import FinanceView from '../Finance/FinanceView';
+import { LogOut, Database, Wallet } from 'lucide-react';
+
+const TABS = [
+  { id: 'db', label: 'Banco de Dados', icon: Database },
+  { id: 'finance', label: 'Finanças', icon: Wallet },
+];
 
 const ExuDashboard = ({ onBack }) => {
   const { signOut, session } = useAuth();
+  const [tab, setTab] = useState('db');
 
   const handleSignOut = async () => {
     await signOut();
@@ -41,26 +48,69 @@ const ExuDashboard = ({ onBack }) => {
         </div>
       </header>
 
-      <main className="max-w-5xl mx-auto px-4 py-8">
-        {/* Banner */}
-        <div className="bg-gradient-to-r from-amber-900/30 to-stone-900 border border-amber-800/30 rounded-2xl p-6 mb-8">
-          <div className="flex items-center gap-3 mb-2">
-            <Database size={20} className="text-amber-400" />
-            <h2 className="text-lg font-bold text-amber-300 font-serif">Banco de Dados Completo</h2>
-          </div>
-          <p className="text-stone-400 text-sm leading-relaxed">
-            Gerencie todos os dados do site abaixo. Clique em cada seção para expandir e editar.
-            Campos com <span className="text-amber-400">🖼 imagem</span> e{' '}
-            <span className="text-blue-400">&lt;/&gt; embed</span> permitem conteúdo visual e embeds HTML
-            que aparecerão na página de detalhe de cada item.
-          </p>
+      {/* Abas */}
+      <nav className="sticky top-[57px] z-40 bg-stone-900/95 backdrop-blur border-b border-stone-800 px-4 sm:px-6">
+        <div className="max-w-5xl mx-auto flex gap-1">
+          {TABS.map(({ id, label, icon: Icon }) => (
+            <button
+              key={id}
+              onClick={() => setTab(id)}
+              className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition ${
+                tab === id
+                  ? 'border-amber-500 text-amber-300'
+                  : 'border-transparent text-stone-500 hover:text-stone-300'
+              }`}
+            >
+              <Icon size={16} />
+              {label}
+            </button>
+          ))}
         </div>
+      </nav>
 
-        {/* Tabelas */}
-        <ExuTableEditor tableName="projects" />
-        <ExuTableEditor tableName="bibliography" />
-        <ExuTableEditor tableName="testimonials" />
-        <ExuTableEditor tableName="admin_settings" />
+      <main className="max-w-5xl mx-auto px-4 py-8">
+        {tab === 'db' && (
+          <>
+            {/* Banner */}
+            <div className="bg-gradient-to-r from-amber-900/30 to-stone-900 border border-amber-800/30 rounded-2xl p-6 mb-8">
+              <div className="flex items-center gap-3 mb-2">
+                <Database size={20} className="text-amber-400" />
+                <h2 className="text-lg font-bold text-amber-300 font-serif">Banco de Dados Completo</h2>
+              </div>
+              <p className="text-stone-400 text-sm leading-relaxed">
+                Gerencie todos os dados do site abaixo. Clique em cada seção para expandir e editar.
+                Campos com <span className="text-amber-400">🖼 imagem</span> e{' '}
+                <span className="text-blue-400">&lt;/&gt; embed</span> permitem conteúdo visual e embeds HTML
+                que aparecerão na página de detalhe de cada item.
+              </p>
+            </div>
+
+            {/* Tabelas */}
+            <ExuTableEditor tableName="projects" />
+            <ExuTableEditor tableName="bibliography" />
+            <ExuTableEditor tableName="testimonials" />
+            <ExuTableEditor tableName="admin_settings" />
+          </>
+        )}
+
+        {tab === 'finance' && (
+          <>
+            {/* Banner */}
+            <div className="bg-gradient-to-r from-amber-900/30 to-stone-900 border border-amber-800/30 rounded-2xl p-6 mb-8">
+              <div className="flex items-center gap-3 mb-2">
+                <Wallet size={20} className="text-amber-400" />
+                <h2 className="text-lg font-bold text-amber-300 font-serif">Finanças Pessoais</h2>
+              </div>
+              <p className="text-stone-400 text-sm leading-relaxed">
+                Área privada e protegida — só o admin do site (você) acessa. Cenário projetado a
+                partir de Ago/2026: salário, GERER e 13º, com fluxo de caixa, caixinhas de
+                provisionamento e lançamentos.
+              </p>
+            </div>
+
+            <FinanceView />
+          </>
+        )}
       </main>
 
       <footer className="text-center py-6 text-stone-700 text-xs">

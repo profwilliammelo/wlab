@@ -1,7 +1,6 @@
 {
   "rewrites": [
     { "source": "/exu", "destination": "/index.html" },
-    { "source": "/financas", "destination": "/index.html" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "headers": [

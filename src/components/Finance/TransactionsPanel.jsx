@@ -17,6 +17,9 @@ function TxForm({ monthKey, boxes, initial, submitLabel, onSubmit, onCancel }) {
   const [isFixed, setIsFixed] = useState(initial?.is_fixed || false);
   const [boxId, setBoxId] = useState(initial?.box_id || '');
   const [syncBox, setSyncBox] = useState(true);
+  // Recorrência: só faz sentido na edição de algo que se repete nos meses.
+  const recurring = editing && (!!initial.group_id || initial.is_fixed);
+  const [applyToGroup, setApplyToGroup] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const switchKind = (k) => {
@@ -43,7 +46,7 @@ function TxForm({ monthKey, boxes, initial, submitLabel, onSubmit, onCancel }) {
         is_projected: true,
         box_id: kind === 'expense' ? (boxId || null) : null,
       };
-      await onSubmit(values, { syncBox });
+      await onSubmit(values, { syncBox, applyToGroup });
     } finally { setBusy(false); }
   };
 
@@ -98,7 +101,15 @@ function TxForm({ monthKey, boxes, initial, submitLabel, onSubmit, onCancel }) {
           <PiggyBank size={13} />
           {editing
             ? 'Conciliar o saldo da caixinha com esta alteração'
-            : 'Somar este valor automaticamente na caixinha'}
+            : 'Somar este valor automaticamente na caixinha (no mês de cada lançamento)'}
+        </label>
+      )}
+
+      {recurring && (
+        <label className="mt-2 flex cursor-pointer items-center gap-2 rounded-lg bg-sky-950/30 px-2.5 py-2 text-xs text-sky-200/90">
+          <input type="checkbox" checked={applyToGroup} onChange={(e) => setApplyToGroup(e.target.checked)} className="accent-sky-500" />
+          <Repeat size={13} />
+          Aplicar a todas as ocorrências (todos os meses)
         </label>
       )}
 
@@ -129,12 +140,18 @@ export default function TransactionsPanel({ monthKey, transactions, boxes, onCha
   };
 
   const remove = async (t) => {
-    const linked = t.kind === 'expense' && t.box_id;
-    const msg = linked
-      ? `Excluir "${t.description}"? Isso também devolve ${formatBRL(t.amount)} à caixinha "${boxName(t.box_id) || ''}".`
-      : 'Excluir este lançamento?';
-    if (!confirm(msg)) return;
-    await removeTransaction(t, { syncBox: true });
+    const recurring = !!t.group_id;
+    if (recurring) {
+      // OK = todos os meses; Cancelar = só este; fechar (Esc) também cancela ação.
+      const all = confirm(
+        `Excluir "${t.description}".\n\nOK = em TODOS os meses (recorrente)\n` +
+        `Cancelar = só neste mês`
+      );
+      await removeTransaction(t, { applyToGroup: all });
+    } else {
+      if (!confirm('Excluir este lançamento?')) return;
+      await removeTransaction(t, {});
+    }
     await onChange();
   };
 

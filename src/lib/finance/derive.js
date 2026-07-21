@@ -77,3 +77,26 @@ export function expenseByCategory(transactions, monthKey) {
 function round2(n) {
   return Math.round((Number(n) || 0) * 100) / 100;
 }
+
+// ------------------------- CAIXINHAS (cumulativo) ---------------------
+// Saldo de uma caixinha AO FINAL de um mês = soma de todos os movimentos
+// cujo mês seja <= o mês informado. Assim ela acumula mês a mês e não
+// "vaza" valor para meses anteriores ao aporte.
+export function boxBalanceAtMonth(movements, boxId, monthKey) {
+  let total = 0;
+  for (const m of movements) {
+    if (m.box_id === boxId && String(m.occurred_on).slice(0, 7) <= monthKey) {
+      total += Number(m.amount) || 0;
+    }
+  }
+  return round2(total);
+}
+
+// Total provisionado (todas as caixinhas) até o mês informado.
+export function totalProvisionedAtMonth(movements, monthKey) {
+  let total = 0;
+  for (const m of movements) {
+    if (String(m.occurred_on).slice(0, 7) <= monthKey) total += Number(m.amount) || 0;
+  }
+  return round2(total);
+}

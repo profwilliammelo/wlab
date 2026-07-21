@@ -150,7 +150,7 @@ export default function FinanceView() {
       <CashFlowChart data={series} activeMonthKey={activeMonth} />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <BoxesPanel boxes={data.boxes} onChange={refresh} />
+        <BoxesPanel boxes={data.boxes} movements={data.movements} monthKey={activeMonth} onChange={refresh} />
         <TransactionsPanel monthKey={activeMonth} transactions={summary.transactions} boxes={data.boxes} onChange={refresh} />
       </div>
     </div>

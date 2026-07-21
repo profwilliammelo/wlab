@@ -2,8 +2,9 @@ import React, { useState } from 'react';
 import {
   PiggyBank, Plus, Minus, Trash2, Target, Landmark, Shield, Plane, X, Check,
 } from 'lucide-react';
-import { formatBRL, percent } from '../../lib/finance/format';
-import { createBox, deleteBox, allocateToBox } from '../../lib/finance/actions';
+import { formatBRL, percent, monthKeyLabel } from '../../lib/finance/format';
+import { createBox, deleteBox, addManualBoxMovement } from '../../lib/finance/actions';
+import { boxBalanceAtMonth, totalProvisionedAtMonth } from '../../lib/finance/derive';
 
 const ICONS = { 'piggy-bank': PiggyBank, landmark: Landmark, shield: Shield, plane: Plane, target: Target };
 const COLORS = ['#f5b301', '#3bd16f', '#ff4d6d', '#7c5cff', '#49b6ff', '#ff8a3d'];
@@ -33,18 +34,19 @@ function XPBar({ pct, color, done }) {
   );
 }
 
-function BoxCard({ box, onChange }) {
+function BoxCard({ box, balance, monthKey, onChange }) {
   const [busy, setBusy] = useState(false);
   const [amount, setAmount] = useState('');
-  const pct = percent(box.current_amount, box.goal_amount);
-  const done = box.goal_amount > 0 && box.current_amount >= box.goal_amount;
+  const pct = percent(balance, box.goal_amount);
+  const done = box.goal_amount > 0 && balance >= box.goal_amount;
 
   const allocate = async (sign) => {
     const delta = sign * Number(amount);
     if (!delta) return;
     setBusy(true);
     try {
-      await allocateToBox(box, delta);
+      // Aporte/retirada DATADO no mês em foco — é o que faz acumular.
+      await addManualBoxMovement(box.id, monthKey, delta);
       setAmount('');
       await onChange();
     } finally { setBusy(false); }
@@ -70,7 +72,7 @@ function BoxCard({ box, onChange }) {
 
       <div className="p-3">
         <div className="mb-1.5 flex items-end justify-between">
-          <span className="font-arcade text-2xl leading-none text-white tabular-nums">{formatBRL(box.current_amount)}</span>
+          <span className="font-arcade text-2xl leading-none text-white tabular-nums">{formatBRL(balance)}</span>
           {done
             ? <span className="mega-blink font-pixel text-[9px] text-emerald-400">CLEAR!</span>
             : <span className="font-pixel text-[9px]" style={{ color: box.color }}>{pct.toFixed(0)}%</span>}
@@ -78,8 +80,9 @@ function BoxCard({ box, onChange }) {
 
         <XPBar pct={pct} color={box.color} done={done} />
 
-        <p className="mt-1.5 text-[10px] uppercase tracking-wide text-stone-500">
-          Meta <span className="text-stone-300">{formatBRL(box.goal_amount)}</span>
+        <p className="mt-1.5 flex items-center justify-between text-[10px] uppercase tracking-wide text-stone-500">
+          <span>Meta <span className="text-stone-300">{formatBRL(box.goal_amount)}</span></span>
+          <span className="text-stone-600">saldo em {monthKeyLabel(monthKey)}</span>
         </p>
 
         <div className="mt-3 flex items-center gap-2">
@@ -142,9 +145,9 @@ function NewBoxForm({ onCreated, onCancel }) {
   );
 }
 
-export default function BoxesPanel({ boxes, onChange }) {
+export default function BoxesPanel({ boxes, movements = [], monthKey, onChange }) {
   const [adding, setAdding] = useState(false);
-  const totalProvisioned = boxes.reduce((s, b) => s + Number(b.current_amount), 0);
+  const totalProvisioned = totalProvisionedAtMonth(movements, monthKey);
 
   const handleCreated = async () => { setAdding(false); await onChange(); };
 
@@ -156,7 +159,8 @@ export default function BoxesPanel({ boxes, onChange }) {
             <PiggyBank size={15} /> CAIXINHAS
           </h3>
           <p className="mt-1.5 text-[10px] uppercase tracking-wide text-stone-500">
-            Provisionado <span className="font-arcade text-sm text-emerald-400">{formatBRL(totalProvisioned)}</span>
+            Provisionado em {monthKeyLabel(monthKey)}{' '}
+            <span className="font-arcade text-sm text-emerald-400">{formatBRL(totalProvisioned)}</span>
           </p>
         </div>
         {!adding && (
@@ -168,7 +172,15 @@ export default function BoxesPanel({ boxes, onChange }) {
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        {boxes.map((box) => <BoxCard key={box.id} box={box} onChange={onChange} />)}
+        {boxes.map((box) => (
+          <BoxCard
+            key={box.id}
+            box={box}
+            balance={boxBalanceAtMonth(movements, box.id, monthKey)}
+            monthKey={monthKey}
+            onChange={onChange}
+          />
+        ))}
         {adding && <NewBoxForm onCreated={handleCreated} onCancel={() => setAdding(false)} />}
       </div>
 

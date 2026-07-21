@@ -38,6 +38,7 @@ create table if not exists public.fin_transactions (
   is_fixed      boolean not null default false,   -- despesa/receita fixa recorrente
   is_projected  boolean not null default true,    -- projeção x realizado
   box_id        uuid references public.fin_boxes (id) on delete set null,
+  group_id      uuid,                             -- agrupa ocorrências recorrentes
   created_at    timestamptz not null default now(),
   updated_at    timestamptz not null default now()
 );
@@ -50,6 +51,9 @@ create index if not exists fin_transactions_user_date_idx
 create index if not exists fin_transactions_box_idx
   on public.fin_transactions (box_id);
 
+create index if not exists fin_transactions_group_idx
+  on public.fin_transactions (group_id);
+
 -- ---------------------------------------------------------------------
 -- 3) CONFIGURAÇÕES / METAS (key-value por usuário)
 -- ---------------------------------------------------------------------
@@ -61,6 +65,29 @@ create table if not exists public.fin_settings (
   updated_at  timestamptz not null default now(),
   unique (user_id, key)
 );
+
+-- ---------------------------------------------------------------------
+-- 3.5) EXTRATO DAS CAIXINHAS (movimentos datados)
+--      O saldo de uma caixinha num mês = soma dos movimentos até aquele
+--      mês. Assim ela acumula mês a mês, sem "vazar" valor para o passado.
+-- ---------------------------------------------------------------------
+create table if not exists public.fin_box_movements (
+  id              uuid primary key default gen_random_uuid(),
+  user_id         uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  box_id          uuid not null references public.fin_boxes (id) on delete cascade,
+  transaction_id  uuid references public.fin_transactions (id) on delete cascade,
+  occurred_on     date not null,
+  amount          numeric(12,2) not null,   -- + entra na caixinha, − sai
+  note            text,
+  created_at      timestamptz not null default now()
+);
+
+create index if not exists fin_box_movements_box_date_idx
+  on public.fin_box_movements (box_id, occurred_on);
+
+create unique index if not exists fin_box_movements_tx_uidx
+  on public.fin_box_movements (transaction_id)
+  where transaction_id is not null;
 
 -- ---------------------------------------------------------------------
 -- 4) trigger de updated_at
@@ -96,15 +123,17 @@ create trigger trg_fin_settings_touch before update on public.fin_settings
 --      • admin (você) ................... só enxerga/edita as próprias linhas
 --    Ou seja: mesmo que alguém consiga uma sessão válida, não toca em nada.
 -- ---------------------------------------------------------------------
-alter table public.fin_boxes        enable row level security;
-alter table public.fin_transactions enable row level security;
-alter table public.fin_settings     enable row level security;
+alter table public.fin_boxes         enable row level security;
+alter table public.fin_transactions  enable row level security;
+alter table public.fin_settings      enable row level security;
+alter table public.fin_box_movements enable row level security;
 
 -- Recria as políticas de forma idempotente (drop + create) para garantir a
 -- versão endurecida mesmo se uma versão anterior mais permissiva já existir.
 drop policy if exists fin_boxes_owner_all        on public.fin_boxes;
 drop policy if exists fin_transactions_owner_all on public.fin_transactions;
 drop policy if exists fin_settings_owner_all     on public.fin_settings;
+drop policy if exists fin_box_movements_admin_owner on public.fin_box_movements;
 
 create policy fin_boxes_admin_owner on public.fin_boxes
   for all to authenticated
@@ -117,6 +146,11 @@ create policy fin_transactions_admin_owner on public.fin_transactions
   with check (user_id = auth.uid() and public.is_admin());
 
 create policy fin_settings_admin_owner on public.fin_settings
+  for all to authenticated
+  using (user_id = auth.uid() and public.is_admin())
+  with check (user_id = auth.uid() and public.is_admin());
+
+create policy fin_box_movements_admin_owner on public.fin_box_movements
   for all to authenticated
   using (user_id = auth.uid() and public.is_admin())
   with check (user_id = auth.uid() and public.is_admin());

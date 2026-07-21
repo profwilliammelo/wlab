@@ -26,11 +26,9 @@ export async function listTransactions() {
 }
 
 // Cria uma transação. Se for uma DESPESA vinculada a uma caixinha
-// (box_id) e syncBox=true, soma automaticamente o valor no montante da
-// caixinha — em "uma operação" do ponto de vista do usuário. Como o
-// Supabase-JS não abre transação multi-tabela no cliente, garantimos a
-// consistência com uma ação compensatória: se a atualização da caixinha
-// falhar, desfazemos a transação recém-criada.
+// (box_id) e syncBox=true, gera um MOVIMENTO datado no extrato da caixinha
+// (fin_box_movements), na data da despesa — assim a caixinha acumula mês a
+// mês. Se o movimento falhar, desfazemos a transação (ação compensatória).
 export async function createTransaction(tx, { syncBox = true } = {}) {
   const { data, error } = await supabase
     .from('fin_transactions')
@@ -41,7 +39,7 @@ export async function createTransaction(tx, { syncBox = true } = {}) {
 
   if (syncBox && data.kind === 'expense' && data.box_id) {
     try {
-      await adjustBoxAmount(data.box_id, Number(data.amount));
+      await syncBoxMovementForTx(data);
     } catch (e) {
       await supabase.from('fin_transactions').delete().eq('id', data.id);
       throw e;
@@ -62,45 +60,56 @@ export async function updateTransaction(id, patch) {
   return data;
 }
 
-// Edita uma transação e concilia o saldo das caixinhas envolvidas.
-// `original` é a linha atual (antes da edição); `patch` traz os campos
-// novos. Com syncBox=true:
-//   • se a caixinha continuou a mesma, aplica só a diferença de valor;
-//   • se mudou (ou virou receita / perdeu o vínculo), devolve o valor
-//     antigo à caixinha antiga e lança o novo na caixinha nova.
-export async function editTransaction(original, patch, { syncBox = true } = {}) {
-  const merged = { ...original, ...patch };
-  const updated = await updateTransaction(original.id, patch);
-
-  if (syncBox) {
-    const oldBox = original.kind === 'expense' ? original.box_id : null;
-    const newBox = merged.kind === 'expense' ? merged.box_id : null;
-    const oldAmt = Number(original.amount) || 0;
-    const newAmt = Number(merged.amount) || 0;
-
-    if (oldBox && oldBox === newBox) {
-      await adjustBoxAmount(oldBox, newAmt - oldAmt);
-    } else {
-      if (oldBox) await adjustBoxAmount(oldBox, -oldAmt);
-      if (newBox) await adjustBoxAmount(newBox, newAmt);
-    }
+// Edita uma transação. Opções:
+//   • applyToGroup: aplica a mesma mudança a TODAS as ocorrências
+//     recorrentes (mesmo group_id) — ex.: mudar a despesa fixa em todos
+//     os meses. Preserva o mês de cada ocorrência (só a "forma" muda).
+//   • syncBox: reconcilia o extrato da caixinha de cada linha afetada
+//     (o movimento datado é recriado a partir do estado novo da despesa).
+export async function editTransaction(original, patch, { syncBox = true, applyToGroup = false } = {}) {
+  let targets = [original];
+  if (applyToGroup && original.group_id) {
+    const { data, error } = await supabase
+      .from('fin_transactions')
+      .select('*')
+      .eq('group_id', original.group_id);
+    if (error) throw error;
+    if (data && data.length) targets = data;
   }
-  return updated;
+
+  // Campos de "forma" propagados a todas as ocorrências.
+  const shape = {};
+  for (const f of ['description', 'category', 'kind', 'amount', 'is_fixed', 'box_id']) {
+    if (patch[f] !== undefined) shape[f] = patch[f];
+  }
+
+  let last = null;
+  for (const t of targets) {
+    const rowPatch = { ...shape };
+    // Numa edição de linha única, a data/dia também pode mudar.
+    if (!applyToGroup && patch.occurred_on !== undefined) rowPatch.occurred_on = patch.occurred_on;
+    last = await updateTransaction(t.id, rowPatch);
+    if (syncBox) await syncBoxMovementForTx(last);
+  }
+  return last;
 }
 
-// Delete "cru" (primitivo) — não mexe em caixinha.
+// Delete "cru" (primitivo).
 export async function deleteTransaction(id) {
   const { error } = await supabase.from('fin_transactions').delete().eq('id', id);
   if (error) throw error;
 }
 
-// Exclui uma transação e, se for despesa vinculada, devolve o valor à
-// caixinha (conciliação automática).
-export async function removeTransaction(tx, { syncBox = true } = {}) {
-  await deleteTransaction(tx.id);
-  if (syncBox && tx.kind === 'expense' && tx.box_id) {
-    await adjustBoxAmount(tx.box_id, -Number(tx.amount));
+// Exclui uma transação. O movimento de caixinha vinculado some sozinho
+// (ON DELETE CASCADE em transaction_id). Com applyToGroup, remove todas as
+// ocorrências recorrentes.
+export async function removeTransaction(tx, { applyToGroup = false } = {}) {
+  if (applyToGroup && tx.group_id) {
+    const { error } = await supabase.from('fin_transactions').delete().eq('group_id', tx.group_id);
+    if (error) throw error;
+    return;
   }
+  await deleteTransaction(tx.id);
 }
 
 function sanitizeTx(tx) {
@@ -113,6 +122,7 @@ function sanitizeTx(tx) {
   if (tx.is_fixed !== undefined) out.is_fixed = !!tx.is_fixed;
   if (tx.is_projected !== undefined) out.is_projected = !!tx.is_projected;
   if (tx.box_id !== undefined) out.box_id = tx.box_id || null;
+  if (tx.group_id !== undefined) out.group_id = tx.group_id || null;
   return out;
 }
 
@@ -154,26 +164,6 @@ export async function deleteBox(id) {
   if (error) throw error;
 }
 
-// Aloca (ou retira, com valor negativo) um valor na caixinha.
-export async function allocateToBox(box, delta) {
-  const next = Math.max(0, Number(box.current_amount) + Number(delta));
-  return updateBox(box.id, { current_amount: next });
-}
-
-// Igual ao allocateToBox, mas só recebe o id — busca o saldo atual antes
-// de somar o delta. Usado pela automação de despesas vinculadas.
-export async function adjustBoxAmount(boxId, delta) {
-  if (!boxId || !Number(delta)) return null;
-  const { data: box, error } = await supabase
-    .from('fin_boxes')
-    .select('id, current_amount')
-    .eq('id', boxId)
-    .single();
-  if (error) throw error;
-  const next = Math.max(0, Number(box.current_amount) + Number(delta));
-  return updateBox(boxId, { current_amount: next });
-}
-
 function sanitizeBox(box) {
   const out = {};
   if (box.name !== undefined) out.name = box.name;
@@ -183,6 +173,70 @@ function sanitizeBox(box) {
   if (box.icon !== undefined) out.icon = box.icon;
   if (box.sort_order !== undefined) out.sort_order = box.sort_order;
   return out;
+}
+
+// -------------------- EXTRATO DAS CAIXINHAS (movimentos) --------------
+// O saldo de uma caixinha num mês é a soma dos movimentos até aquele mês
+// (ver derive.js:boxBalanceAtMonth). Cada movimento é datado.
+
+export async function listBoxMovements() {
+  const { data, error } = await supabase
+    .from('fin_box_movements')
+    .select('*')
+    .order('occurred_on', { ascending: true });
+  if (error) throw error;
+  return data || [];
+}
+
+// Aporte/retirada manual, DATADO no mês informado (dia 15). Positivo entra,
+// negativo sai. É o que faz a caixinha "acumular" a partir daquele mês.
+export async function addManualBoxMovement(boxId, monthKey, amount, note = 'Aporte manual') {
+  if (!boxId || !Number(amount)) return null;
+  const { data, error } = await supabase
+    .from('fin_box_movements')
+    .insert({ box_id: boxId, occurred_on: `${monthKey}-15`, amount: Number(amount), note })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+// Mantém 1 movimento por despesa vinculada (chave: transaction_id).
+// Cria/atualiza quando a despesa aponta para uma caixinha; remove quando
+// deixa de apontar (virou receita, perdeu o vínculo, etc.).
+export async function syncBoxMovementForTx(tx) {
+  const shouldHave = tx.kind === 'expense' && !!tx.box_id;
+
+  const { data: existing, error: exErr } = await supabase
+    .from('fin_box_movements')
+    .select('id')
+    .eq('transaction_id', tx.id)
+    .maybeSingle();
+  if (exErr) throw exErr;
+
+  if (!shouldHave) {
+    if (existing) {
+      const { error } = await supabase.from('fin_box_movements').delete().eq('id', existing.id);
+      if (error) throw error;
+    }
+    return null;
+  }
+
+  const payload = {
+    box_id: tx.box_id,
+    transaction_id: tx.id,
+    occurred_on: tx.occurred_on,
+    amount: Number(tx.amount),
+    note: 'Despesa vinculada',
+  };
+  if (existing) {
+    const { error } = await supabase.from('fin_box_movements').update(payload).eq('id', existing.id);
+    if (error) throw error;
+  } else {
+    const { error } = await supabase.from('fin_box_movements').insert(payload);
+    if (error) throw error;
+  }
+  return null;
 }
 
 // ---------------------------- CONFIGURAÇÕES ---------------------------
@@ -212,23 +266,30 @@ export async function setSetting(key, value) {
 // caixinhas iniciais, a partir das listas em config.js. Tudo editável depois.
 
 // Monta as linhas de transação do cenário (não grava — só monta).
+// Cada linha recorrente compartilha um group_id estável entre os meses,
+// para permitir "editar em todos os meses".
 function buildScenarioTransactions() {
   const months = projectionMonthKeys();
   const txs = [];
+  const groups = new Map();
+  const groupFor = (k) => {
+    if (!groups.has(k)) groups.set(k, crypto.randomUUID());
+    return groups.get(k);
+  };
 
   for (const key of months) {
     const day = (d) => `${key}-${String(d).padStart(2, '0')}`;
 
     for (const inc of MONTHLY_INCOMES) {
-      txs.push(income(day(inc.day), inc.description, inc.category, inc.amount));
+      txs.push(income(day(inc.day), inc.description, inc.category, inc.amount, true, groupFor('inc:' + inc.description)));
     }
     for (const ex of EXTRA_INCOMES) {
       if (ex.monthKey === key) {
-        txs.push(income(day(ex.day), ex.description, ex.category, ex.amount, false));
+        txs.push(income(day(ex.day), ex.description, ex.category, ex.amount, false, groupFor('extra:' + ex.description)));
       }
     }
     for (const exp of FIXED_EXPENSES) {
-      txs.push(expense(day(exp.day), exp.description, exp.category, exp.amount));
+      txs.push(expense(day(exp.day), exp.description, exp.category, exp.amount, true, groupFor('exp:' + exp.description)));
     }
   }
   return txs;
@@ -263,6 +324,9 @@ export async function ensureSeeded() {
 // cenário" — ideal para reaplicar a projeção fixa. Zera edições manuais.
 const ALL_ROWS = '00000000-0000-0000-0000-000000000000';
 export async function regenerateScenario() {
+  // Movimentos primeiro (cascatas também cobririam, mas somos explícitos).
+  const delMov = await supabase.from('fin_box_movements').delete().neq('id', ALL_ROWS);
+  if (delMov.error) throw delMov.error;
   const delTx = await supabase.from('fin_transactions').delete().neq('id', ALL_ROWS);
   if (delTx.error) throw delTx.error;
   const delBox = await supabase.from('fin_boxes').delete().neq('id', ALL_ROWS);
@@ -271,11 +335,11 @@ export async function regenerateScenario() {
   return true;
 }
 
-function income(occurred_on, description, category, amount, is_fixed = true) {
-  return { occurred_on, description, category, kind: 'income', amount, is_fixed, is_projected: true };
+function income(occurred_on, description, category, amount, is_fixed = true, group_id = null) {
+  return { occurred_on, description, category, kind: 'income', amount, is_fixed, is_projected: true, group_id };
 }
-function expense(occurred_on, description, category, amount, is_fixed = true) {
-  return { occurred_on, description, category, kind: 'expense', amount, is_fixed, is_projected: true };
+function expense(occurred_on, description, category, amount, is_fixed = true, group_id = null) {
+  return { occurred_on, description, category, kind: 'expense', amount, is_fixed, is_projected: true, group_id };
 }
 
 // ------------------------- CARGA COMPLETA -----------------------------
@@ -283,10 +347,11 @@ function expense(occurred_on, description, category, amount, is_fixed = true) {
 
 export async function loadFinanceData() {
   await ensureSeeded();
-  const [transactions, boxes, monthlyGoal] = await Promise.all([
+  const [transactions, boxes, movements, monthlyGoal] = await Promise.all([
     listTransactions(),
     listBoxes(),
+    listBoxMovements(),
     getSetting(SETTINGS_KEYS.MONTHLY_GOAL, DEFAULT_MONTHLY_GOAL),
   ]);
-  return { transactions, boxes, monthlyGoal: Number(monthlyGoal) || DEFAULT_MONTHLY_GOAL };
+  return { transactions, boxes, movements, monthlyGoal: Number(monthlyGoal) || DEFAULT_MONTHLY_GOAL };
 }

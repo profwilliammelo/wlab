@@ -95,16 +95,17 @@ const ExuDashboard = ({ onBack }) => {
 
         {tab === 'finance' && (
           <>
-            {/* Banner */}
-            <div className="bg-gradient-to-r from-amber-900/30 to-stone-900 border border-amber-800/30 rounded-2xl p-6 mb-8">
-              <div className="flex items-center gap-3 mb-2">
-                <Wallet size={20} className="text-amber-400" />
-                <h2 className="text-lg font-bold text-amber-300 font-serif">Finanças Pessoais</h2>
+            {/* Banner retrô */}
+            <div className="mega-panel mega-scanlines overflow-hidden mb-8">
+              <div className="mega-strip bg-amber-500 px-4 py-2 flex items-center gap-2">
+                <Wallet size={16} className="text-black" />
+                <h2 className="font-pixel text-[11px] text-black">FINANÇAS · PLAYER 1</h2>
               </div>
-              <p className="text-stone-400 text-sm leading-relaxed">
-                Área privada e protegida — só o admin do site (você) acessa. Cenário projetado a
-                partir de Ago/2026: salário, GERER e 13º, com fluxo de caixa, caixinhas de
-                provisionamento e lançamentos.
+              <p className="text-stone-400 text-sm leading-relaxed px-5 py-4">
+                Área privada e protegida — só o admin (você) acessa. Cenário projetado a partir de
+                Ago/2026: salário, GERER, 13º e férias, com fluxo de caixa, caixinhas de
+                provisionamento e lançamentos. Use <span className="text-amber-300 font-medium">REGENERAR</span> para
+                reaplicar a projeção fixa a qualquer momento.
               </p>
             </div>
 

@@ -8,7 +8,10 @@
 // =====================================================================
 
 import { supabase } from '../supabaseClient';
-import { FINANCE, SETTINGS_KEYS, DEFAULT_MONTHLY_GOAL } from './config';
+import {
+  SETTINGS_KEYS, DEFAULT_MONTHLY_GOAL, SEED_VERSION,
+  MONTHLY_INCOMES, EXTRA_INCOMES, FIXED_EXPENSES, SEED_BOXES,
+} from './config';
 import { projectionMonthKeys } from './format';
 
 // ----------------------------- TRANSAÇÕES -----------------------------
@@ -22,16 +25,32 @@ export async function listTransactions() {
   return data || [];
 }
 
-export async function createTransaction(tx) {
+// Cria uma transação. Se for uma DESPESA vinculada a uma caixinha
+// (box_id) e syncBox=true, soma automaticamente o valor no montante da
+// caixinha — em "uma operação" do ponto de vista do usuário. Como o
+// Supabase-JS não abre transação multi-tabela no cliente, garantimos a
+// consistência com uma ação compensatória: se a atualização da caixinha
+// falhar, desfazemos a transação recém-criada.
+export async function createTransaction(tx, { syncBox = true } = {}) {
   const { data, error } = await supabase
     .from('fin_transactions')
     .insert(sanitizeTx(tx))
     .select()
     .single();
   if (error) throw error;
+
+  if (syncBox && data.kind === 'expense' && data.box_id) {
+    try {
+      await adjustBoxAmount(data.box_id, Number(data.amount));
+    } catch (e) {
+      await supabase.from('fin_transactions').delete().eq('id', data.id);
+      throw e;
+    }
+  }
   return data;
 }
 
+// Update "cru" (primitivo) — não mexe em caixinha.
 export async function updateTransaction(id, patch) {
   const { data, error } = await supabase
     .from('fin_transactions')
@@ -43,9 +62,45 @@ export async function updateTransaction(id, patch) {
   return data;
 }
 
+// Edita uma transação e concilia o saldo das caixinhas envolvidas.
+// `original` é a linha atual (antes da edição); `patch` traz os campos
+// novos. Com syncBox=true:
+//   • se a caixinha continuou a mesma, aplica só a diferença de valor;
+//   • se mudou (ou virou receita / perdeu o vínculo), devolve o valor
+//     antigo à caixinha antiga e lança o novo na caixinha nova.
+export async function editTransaction(original, patch, { syncBox = true } = {}) {
+  const merged = { ...original, ...patch };
+  const updated = await updateTransaction(original.id, patch);
+
+  if (syncBox) {
+    const oldBox = original.kind === 'expense' ? original.box_id : null;
+    const newBox = merged.kind === 'expense' ? merged.box_id : null;
+    const oldAmt = Number(original.amount) || 0;
+    const newAmt = Number(merged.amount) || 0;
+
+    if (oldBox && oldBox === newBox) {
+      await adjustBoxAmount(oldBox, newAmt - oldAmt);
+    } else {
+      if (oldBox) await adjustBoxAmount(oldBox, -oldAmt);
+      if (newBox) await adjustBoxAmount(newBox, newAmt);
+    }
+  }
+  return updated;
+}
+
+// Delete "cru" (primitivo) — não mexe em caixinha.
 export async function deleteTransaction(id) {
   const { error } = await supabase.from('fin_transactions').delete().eq('id', id);
   if (error) throw error;
+}
+
+// Exclui uma transação e, se for despesa vinculada, devolve o valor à
+// caixinha (conciliação automática).
+export async function removeTransaction(tx, { syncBox = true } = {}) {
+  await deleteTransaction(tx.id);
+  if (syncBox && tx.kind === 'expense' && tx.box_id) {
+    await adjustBoxAmount(tx.box_id, -Number(tx.amount));
+  }
 }
 
 function sanitizeTx(tx) {
@@ -105,6 +160,20 @@ export async function allocateToBox(box, delta) {
   return updateBox(box.id, { current_amount: next });
 }
 
+// Igual ao allocateToBox, mas só recebe o id — busca o saldo atual antes
+// de somar o delta. Usado pela automação de despesas vinculadas.
+export async function adjustBoxAmount(boxId, delta) {
+  if (!boxId || !Number(delta)) return null;
+  const { data: box, error } = await supabase
+    .from('fin_boxes')
+    .select('id, current_amount')
+    .eq('id', boxId)
+    .single();
+  if (error) throw error;
+  const next = Math.max(0, Number(box.current_amount) + Number(delta));
+  return updateBox(boxId, { current_amount: next });
+}
+
 function sanitizeBox(box) {
   const out = {};
   if (box.name !== undefined) out.name = box.name;
@@ -139,54 +208,66 @@ export async function setSetting(key, value) {
 }
 
 // ------------------------- SEED DO CENÁRIO ----------------------------
-// Gera as receitas projetadas (salário + GERER todo mês, 13º em Junho),
-// algumas despesas fixas de exemplo e caixinhas iniciais.
-// Idempotente: só roda se a flag `seeded` ainda não existir.
+// Gera as receitas e despesas fixas projetadas (a partir de Ago/2026) e as
+// caixinhas iniciais, a partir das listas em config.js. Tudo editável depois.
 
-export async function ensureSeeded() {
-  const seeded = await getSetting(SETTINGS_KEYS.SEEDED, false);
-  if (seeded) return false;
-
+// Monta as linhas de transação do cenário (não grava — só monta).
+function buildScenarioTransactions() {
   const months = projectionMonthKeys();
   const txs = [];
 
   for (const key of months) {
-    const m = Number(key.split('-')[1]);
     const day = (d) => `${key}-${String(d).padStart(2, '0')}`;
 
-    // Receitas fixas do mês
-    txs.push(income(day(5), 'Salário base (líquido)', 'Salário', FINANCE.SALARY_BASE));
-    txs.push(income(day(5), 'GERER — Regime Suplementar (líquido)', 'GERER', FINANCE.GERER));
-
-    // 13º salário — só em Junho
-    if (m === FINANCE.THIRTEENTH_MONTH) {
-      txs.push(income(day(20), '13º Salário (provisão)', '13º Salário', FINANCE.THIRTEENTH, false));
+    for (const inc of MONTHLY_INCOMES) {
+      txs.push(income(day(inc.day), inc.description, inc.category, inc.amount));
     }
-
-    // Despesas fixas de exemplo (edite/ajuste à vontade no painel)
-    txs.push(expense(day(10), 'Moradia (aluguel/condomínio)', 'Moradia', 3200));
-    txs.push(expense(day(12), 'Alimentação', 'Alimentação', 1800));
-    txs.push(expense(day(15), 'Transporte', 'Transporte', 700));
-    txs.push(expense(day(8), 'Assinaturas e serviços', 'Assinaturas', 250));
+    for (const ex of EXTRA_INCOMES) {
+      if (ex.monthKey === key) {
+        txs.push(income(day(ex.day), ex.description, ex.category, ex.amount, false));
+      }
+    }
+    for (const exp of FIXED_EXPENSES) {
+      txs.push(expense(day(exp.day), exp.description, exp.category, exp.amount));
+    }
   }
+  return txs;
+}
 
-  // Insere transações em lote
+// Grava o cenário completo (transações + caixinhas + settings).
+async function writeScenario() {
+  const txs = buildScenarioTransactions();
   if (txs.length) {
     const { error } = await supabase.from('fin_transactions').insert(txs);
     if (error) throw error;
   }
 
-  // Caixinhas iniciais
-  const boxes = [
-    { name: 'Leão / IR', goal_amount: 12000, current_amount: 0, color: '#b45309', icon: 'landmark', sort_order: 1 },
-    { name: 'Reserva de Emergência', goal_amount: 60000, current_amount: 0, color: '#047857', icon: 'shield', sort_order: 2 },
-    { name: 'Viagem', goal_amount: 15000, current_amount: 0, color: '#be123c', icon: 'plane', sort_order: 3 },
-  ];
-  const { error: boxErr } = await supabase.from('fin_boxes').insert(boxes);
+  const { error: boxErr } = await supabase.from('fin_boxes').insert(SEED_BOXES);
   if (boxErr) throw boxErr;
 
   await setSetting(SETTINGS_KEYS.MONTHLY_GOAL, DEFAULT_MONTHLY_GOAL);
   await setSetting(SETTINGS_KEYS.SEEDED, true);
+  await setSetting(SETTINGS_KEYS.SEED_VERSION, SEED_VERSION);
+}
+
+// Roda uma vez, no primeiro acesso (se ainda não houver cenário).
+export async function ensureSeeded() {
+  const seeded = await getSetting(SETTINGS_KEYS.SEEDED, false);
+  if (seeded) return false;
+  await writeScenario();
+  return true;
+}
+
+// Apaga TODO o cenário atual (transações + caixinhas) e regenera do zero
+// com os valores projetados de config.js. Usado pelo botão "Regenerar
+// cenário" — ideal para reaplicar a projeção fixa. Zera edições manuais.
+const ALL_ROWS = '00000000-0000-0000-0000-000000000000';
+export async function regenerateScenario() {
+  const delTx = await supabase.from('fin_transactions').delete().neq('id', ALL_ROWS);
+  if (delTx.error) throw delTx.error;
+  const delBox = await supabase.from('fin_boxes').delete().neq('id', ALL_ROWS);
+  if (delBox.error) throw delBox.error;
+  await writeScenario();
   return true;
 }
 

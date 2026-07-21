@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { ChevronLeft, ChevronRight, AlertTriangle, Loader2 } from 'lucide-react';
-import { loadFinanceData } from '../../lib/finance/actions';
-import { currentMonthKey, monthKeyLong } from '../../lib/finance/format';
+import { ChevronLeft, ChevronRight, AlertTriangle, Loader2, RotateCcw, Gamepad2 } from 'lucide-react';
+import { loadFinanceData, regenerateScenario } from '../../lib/finance/actions';
+import { currentMonthKey, monthKeyLong, monthKeyLabel, formatBRL } from '../../lib/finance/format';
 import { monthSummary, cashFlowSeries, accumulatedBalance, allMonthKeys } from '../../lib/finance/derive';
 import SummaryCards from './SummaryCards';
 import CashFlowChart from './CashFlowChart';
@@ -54,6 +54,24 @@ export default function FinanceView() {
     if (next) setActiveMonth(next);
   };
 
+  const [regenerating, setRegenerating] = useState(false);
+  const handleRegenerate = async () => {
+    if (!confirm(
+      'REGENERAR CENÁRIO?\n\nIsto apaga TODOS os lançamentos e caixinhas atuais e ' +
+      'recria a projeção fixa (salário, GERER, 13º, férias e despesas fixas) a partir ' +
+      'de Ago/2026. Edições manuais serão perdidas. Continuar?'
+    )) return;
+    setRegenerating(true);
+    try {
+      await regenerateScenario();
+      await refresh();
+    } catch (e) {
+      alert('Falha ao regenerar: ' + (e.message || e));
+    } finally {
+      setRegenerating(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex min-h-[40vh] items-center justify-center">
@@ -84,23 +102,47 @@ export default function FinanceView() {
     );
   }
 
+  const idx = months.indexOf(activeMonth);
+
   return (
     <div className="space-y-6">
-      {/* Month switcher */}
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-xs uppercase tracking-wide text-stone-500">Mês em foco</p>
-          <h2 className="font-serif text-2xl font-bold capitalize text-white">{monthKeyLong(activeMonth)}</h2>
+      {/* HUD — barra de status estilo Mega Drive */}
+      <div className="mega-panel mega-scanlines overflow-hidden">
+        <div className="mega-strip flex flex-wrap items-center justify-between gap-2 bg-amber-500 px-4 py-2">
+          <span className="flex items-center gap-2 font-pixel text-[10px] text-black">
+            <Gamepad2 size={14} /> STAGE SELECT
+          </span>
+          <button onClick={handleRegenerate} disabled={regenerating}
+            className="mega-btn flex items-center gap-1.5 rounded bg-black px-3 py-1.5 text-[8px] text-amber-300 disabled:opacity-50">
+            <RotateCcw size={11} className={regenerating ? 'animate-spin' : ''} /> REGENERAR
+          </button>
         </div>
-        <div className="flex items-center gap-1">
-          <button onClick={() => stepMonth(-1)} disabled={months.indexOf(activeMonth) <= 0}
-            className="rounded-lg border border-stone-800 p-2 text-stone-400 transition hover:bg-stone-800 hover:text-white disabled:opacity-30">
-            <ChevronLeft size={18} />
-          </button>
-          <button onClick={() => stepMonth(1)} disabled={months.indexOf(activeMonth) >= months.length - 1}
-            className="rounded-lg border border-stone-800 p-2 text-stone-400 transition hover:bg-stone-800 hover:text-white disabled:opacity-30">
-            <ChevronRight size={18} />
-          </button>
+
+        <div className="flex flex-wrap items-center justify-between gap-4 px-4 py-4">
+          {/* Level selector */}
+          <div className="flex items-center gap-3">
+            <button onClick={() => stepMonth(-1)} disabled={idx <= 0}
+              className="mega-btn grid h-10 w-10 place-items-center rounded bg-stone-700 text-amber-200 disabled:opacity-30">
+              <ChevronLeft size={18} />
+            </button>
+            <div className="text-center min-w-[8.5rem]">
+              <p className="font-pixel text-[8px] uppercase tracking-wider text-stone-500">LEVEL {idx + 1}/{months.length}</p>
+              <h2 className="mt-1 font-pixel text-[13px] uppercase text-white mega-glow">{monthKeyLabel(activeMonth)}</h2>
+              <p className="mt-1 text-[10px] capitalize text-stone-500">{monthKeyLong(activeMonth)}</p>
+            </div>
+            <button onClick={() => stepMonth(1)} disabled={idx >= months.length - 1}
+              className="mega-btn grid h-10 w-10 place-items-center rounded bg-stone-700 text-amber-200 disabled:opacity-30">
+              <ChevronRight size={18} />
+            </button>
+          </div>
+
+          {/* Score / saldo do mês */}
+          <div className="text-right">
+            <p className="font-pixel text-[8px] uppercase tracking-wider text-stone-500">SALDO LIVRE · SCORE</p>
+            <p className={`font-arcade text-4xl leading-none mega-glow ${summary.free >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+              {formatBRL(summary.free)}
+            </p>
+          </div>
         </div>
       </div>
 
@@ -109,7 +151,7 @@ export default function FinanceView() {
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <BoxesPanel boxes={data.boxes} onChange={refresh} />
-        <TransactionsPanel monthKey={activeMonth} transactions={summary.transactions} onChange={refresh} />
+        <TransactionsPanel monthKey={activeMonth} transactions={summary.transactions} boxes={data.boxes} onChange={refresh} />
       </div>
     </div>
   );

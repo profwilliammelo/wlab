@@ -45,6 +45,11 @@ create table if not exists public.fin_transactions (
 create index if not exists fin_transactions_user_date_idx
   on public.fin_transactions (user_id, occurred_on);
 
+-- FK opcional para a caixinha de destino (despesa que abastece um envelope).
+-- Já declarada acima em box_id; o índice acelera a conciliação por caixinha.
+create index if not exists fin_transactions_box_idx
+  on public.fin_transactions (box_id);
+
 -- ---------------------------------------------------------------------
 -- 3) CONFIGURAÇÕES / METAS (key-value por usuário)
 -- ---------------------------------------------------------------------

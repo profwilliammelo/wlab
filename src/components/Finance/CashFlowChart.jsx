@@ -22,11 +22,11 @@ function CustomTooltip({ active, payload, label }) {
 
 export default function CashFlowChart({ data, activeMonthKey }) {
   return (
-    <div className="rounded-2xl border border-stone-800 bg-stone-900/60 p-5">
+    <div className="mega-panel p-5">
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <h3 className="font-serif text-lg font-bold text-amber-300">Fluxo de Caixa Projetado</h3>
-          <p className="text-xs text-stone-500">Receitas x Despesas x Meta ao longo dos meses</p>
+          <h3 className="font-pixel text-[11px] text-amber-300 mega-glow">FLUXO DE CAIXA</h3>
+          <p className="mt-1.5 text-[10px] uppercase tracking-wide text-stone-500">Receitas x Despesas x Meta</p>
         </div>
       </div>
       <div className="h-72 w-full">
@@ -52,18 +52,18 @@ export default function CashFlowChart({ data, activeMonthKey }) {
               wrapperStyle={{ fontSize: 12, paddingTop: 8 }}
               formatter={(v) => <span className="capitalize text-stone-400">{v}</span>}
             />
-            <Bar dataKey="receitas" name="Receitas" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={26}>
+            <Bar dataKey="receitas" name="Receitas" fill="#3bd16f" radius={[2, 2, 0, 0]} maxBarSize={24} stroke="#000" strokeWidth={1}>
               {data.map((d) => (
-                <Cell key={d.monthKey} fillOpacity={d.monthKey === activeMonthKey ? 1 : 0.55} />
+                <Cell key={d.monthKey} fillOpacity={d.monthKey === activeMonthKey ? 1 : 0.5} />
               ))}
             </Bar>
-            <Bar dataKey="despesas" name="Despesas" fill="#f43f5e" radius={[4, 4, 0, 0]} maxBarSize={26}>
+            <Bar dataKey="despesas" name="Despesas" fill="#ff4d6d" radius={[2, 2, 0, 0]} maxBarSize={24} stroke="#000" strokeWidth={1}>
               {data.map((d) => (
-                <Cell key={d.monthKey} fillOpacity={d.monthKey === activeMonthKey ? 1 : 0.55} />
+                <Cell key={d.monthKey} fillOpacity={d.monthKey === activeMonthKey ? 1 : 0.5} />
               ))}
             </Bar>
-            <Line type="monotone" dataKey="saldo" name="Saldo Livre" stroke="#f59e0b" strokeWidth={2.5} dot={{ r: 3 }} activeDot={{ r: 5 }} />
-            <Line type="monotone" dataKey="meta" name="Meta" stroke="#38bdf8" strokeWidth={1.5} strokeDasharray="5 5" dot={false} />
+            <Line type="monotone" dataKey="saldo" name="Saldo Livre" stroke="#f5b301" strokeWidth={3} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+            <Line type="monotone" dataKey="meta" name="Meta" stroke="#49b6ff" strokeWidth={1.5} strokeDasharray="4 4" dot={false} />
           </ComposedChart>
         </ResponsiveContainer>
       </div>

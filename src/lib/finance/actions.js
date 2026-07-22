@@ -188,6 +188,14 @@ export async function listBoxMovements() {
   return data || [];
 }
 
+// Estorna (remove) um movimento manual do extrato. Movimentos ligados a
+// uma despesa (transaction_id) não são removidos por aqui — mexa na
+// despesa. O saldo é recalculado sozinho, pois é derivado do extrato.
+export async function deleteBoxMovement(id) {
+  const { error } = await supabase.from('fin_box_movements').delete().eq('id', id);
+  if (error) throw error;
+}
+
 // Aporte/retirada manual, DATADO no mês informado (dia 15). Positivo entra,
 // negativo sai. É o que faz a caixinha "acumular" a partir daquele mês.
 export async function addManualBoxMovement(boxId, monthKey, amount, note = 'Aporte manual') {

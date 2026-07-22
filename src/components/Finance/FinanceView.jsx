@@ -7,6 +7,7 @@ import SummaryCards from './SummaryCards';
 import CashFlowChart from './CashFlowChart';
 import BoxesPanel from './BoxesPanel';
 import TransactionsPanel from './TransactionsPanel';
+import HistoryPanel from './HistoryPanel';
 
 // Painel de finanças embutido no Modo Exu (sem topbar própria — o Exu já provê).
 export default function FinanceView() {
@@ -160,6 +161,8 @@ export default function FinanceView() {
         <BoxesPanel boxes={data.boxes} movements={data.movements} monthKey={activeMonth} onChange={refresh} />
         <TransactionsPanel monthKey={activeMonth} transactions={summary.transactions} boxes={data.boxes} onChange={refresh} />
       </div>
+
+      <HistoryPanel movements={data.movements} boxes={data.boxes} onChange={refresh} />
     </div>
   );
 }

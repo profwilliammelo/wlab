@@ -74,10 +74,11 @@ create table if not exists public.fin_settings (
 create table if not exists public.fin_box_movements (
   id              uuid primary key default gen_random_uuid(),
   user_id         uuid not null default auth.uid() references auth.users (id) on delete cascade,
-  box_id          uuid not null references public.fin_boxes (id) on delete cascade,
+  -- box_id NULL = ajuste do Saldo Acumulado (global); preenchido = caixinha
+  box_id          uuid references public.fin_boxes (id) on delete cascade,
   transaction_id  uuid references public.fin_transactions (id) on delete cascade,
   occurred_on     date not null,
-  amount          numeric(12,2) not null,   -- + entra na caixinha, − sai
+  amount          numeric(12,2) not null,   -- + entra, − sai
   note            text,
   created_at      timestamptz not null default now()
 );

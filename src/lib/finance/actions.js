@@ -201,6 +201,19 @@ export async function addManualBoxMovement(boxId, monthKey, amount, note = 'Apor
   return data;
 }
 
+// Ajuste manual do SALDO ACUMULADO (global — box_id NULL). Datado no mês.
+// Não cria receita/despesa: só corrige o acumulado a partir daquele mês.
+export async function addGlobalAdjustment(monthKey, amount, note = 'Ajuste de saldo') {
+  if (!Number(amount)) return null;
+  const { data, error } = await supabase
+    .from('fin_box_movements')
+    .insert({ box_id: null, occurred_on: `${monthKey}-15`, amount: Number(amount), note })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
 // Mantém 1 movimento por despesa vinculada (chave: transaction_id).
 // Cria/atualiza quando a despesa aponta para uma caixinha; remove quando
 // deixa de apontar (virou receita, perdeu o vínculo, etc.).

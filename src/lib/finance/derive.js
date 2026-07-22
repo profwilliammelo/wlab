@@ -49,10 +49,22 @@ export function cashFlowSeries(transactions, monthlyGoal) {
   });
 }
 
-// Saldo acumulado (soma de saldos livres ao longo dos meses).
-export function accumulatedBalance(transactions, upToMonthKey) {
+// Saldo acumulado = soma dos saldos livres até o mês + ajustes manuais
+// globais (movimentos com box_id nulo) até o mês. O ajuste manual permite
+// DEFINIR o acumulado sem criar receita/despesa.
+export function accumulatedBalance(transactions, movements, upToMonthKey) {
   const keys = allMonthKeys(transactions).filter((k) => k <= upToMonthKey);
-  return keys.reduce((acc, k) => acc + monthSummary(transactions, k).free, 0);
+  const free = keys.reduce((acc, k) => acc + monthSummary(transactions, k).free, 0);
+  return round2(free + globalAdjustmentAtMonth(movements, upToMonthKey));
+}
+
+// Soma dos ajustes manuais globais (box_id nulo) até o mês.
+export function globalAdjustmentAtMonth(movements = [], monthKey) {
+  let total = 0;
+  for (const m of movements) {
+    if (!m.box_id && String(m.occurred_on).slice(0, 7) <= monthKey) total += Number(m.amount) || 0;
+  }
+  return round2(total);
 }
 
 // União das chaves projetadas + chaves que realmente têm transações.
@@ -92,11 +104,12 @@ export function boxBalanceAtMonth(movements, boxId, monthKey) {
   return round2(total);
 }
 
-// Total provisionado (todas as caixinhas) até o mês informado.
+// Total provisionado nas caixinhas (exclui ajustes globais de box_id nulo)
+// até o mês informado.
 export function totalProvisionedAtMonth(movements, monthKey) {
   let total = 0;
   for (const m of movements) {
-    if (String(m.occurred_on).slice(0, 7) <= monthKey) total += Number(m.amount) || 0;
+    if (m.box_id && String(m.occurred_on).slice(0, 7) <= monthKey) total += Number(m.amount) || 0;
   }
   return round2(total);
 }

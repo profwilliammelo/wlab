@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { ChevronLeft, ChevronRight, AlertTriangle, Loader2, RotateCcw, Gamepad2 } from 'lucide-react';
-import { loadFinanceData, regenerateScenario } from '../../lib/finance/actions';
+import { loadFinanceData, regenerateScenario, addGlobalAdjustment } from '../../lib/finance/actions';
 import { currentMonthKey, monthKeyLong, monthKeyLabel, formatBRL } from '../../lib/finance/format';
 import { monthSummary, cashFlowSeries, accumulatedBalance, allMonthKeys } from '../../lib/finance/derive';
 import SummaryCards from './SummaryCards';
@@ -44,9 +44,16 @@ export default function FinanceView() {
     [data],
   );
   const accumulated = useMemo(
-    () => (data ? accumulatedBalance(data.transactions, activeMonth) : 0),
+    () => (data ? accumulatedBalance(data.transactions, data.movements, activeMonth) : 0),
     [data, activeMonth],
   );
+
+  const handleSetAccumulated = async (target) => {
+    const delta = Number(target) - accumulated;
+    if (!delta) return;
+    await addGlobalAdjustment(activeMonth, delta);
+    await refresh();
+  };
 
   const stepMonth = (dir) => {
     const idx = months.indexOf(activeMonth);
@@ -146,7 +153,7 @@ export default function FinanceView() {
         </div>
       </div>
 
-      <SummaryCards summary={summary} accumulated={accumulated} />
+      <SummaryCards summary={summary} accumulated={accumulated} onSetAccumulated={handleSetAccumulated} />
       <CashFlowChart data={series} activeMonthKey={activeMonth} />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">

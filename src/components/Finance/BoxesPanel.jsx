@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import {
-  PiggyBank, Plus, Minus, Trash2, Target, Landmark, Shield, Plane, X, Check,
+  PiggyBank, Plus, Minus, Trash2, Target, Landmark, Shield, Plane, X, Check, Pencil,
 } from 'lucide-react';
 import { formatBRL, percent, monthKeyLabel } from '../../lib/finance/format';
-import { createBox, deleteBox, addManualBoxMovement } from '../../lib/finance/actions';
+import { createBox, updateBox, deleteBox, addManualBoxMovement } from '../../lib/finance/actions';
 import { boxBalanceAtMonth, totalProvisionedAtMonth } from '../../lib/finance/derive';
 
 const ICONS = { 'piggy-bank': PiggyBank, landmark: Landmark, shield: Shield, plane: Plane, target: Target };
@@ -37,6 +37,12 @@ function XPBar({ pct, color, done }) {
 function BoxCard({ box, balance, monthKey, onChange }) {
   const [busy, setBusy] = useState(false);
   const [amount, setAmount] = useState('');
+  const [editing, setEditing] = useState(false);
+  // Campos de edição da caixinha
+  const [name, setName] = useState(box.name);
+  const [goal, setGoal] = useState(String(box.goal_amount));
+  const [color, setColor] = useState(box.color);
+  const [setBal, setSetBal] = useState(String(balance));
   const pct = percent(balance, box.goal_amount);
   const done = box.goal_amount > 0 && balance >= box.goal_amount;
 
@@ -52,6 +58,24 @@ function BoxCard({ box, balance, monthKey, onChange }) {
     } finally { setBusy(false); }
   };
 
+  const openEdit = () => {
+    setName(box.name); setGoal(String(box.goal_amount)); setColor(box.color); setSetBal(String(balance));
+    setEditing(true);
+  };
+
+  const saveEdit = async () => {
+    setBusy(true);
+    try {
+      await updateBox(box.id, { name: name.trim() || box.name, goal_amount: Number(goal) || 0, color });
+      // Definir saldo do mês = grava a diferença como ajuste datado.
+      const target = Number(setBal);
+      const delta = target - balance;
+      if (delta) await addManualBoxMovement(box.id, monthKey, delta, 'Ajuste de saldo');
+      setEditing(false);
+      await onChange();
+    } finally { setBusy(false); }
+  };
+
   const remove = async () => {
     if (!confirm(`Excluir a caixinha "${box.name}"?`)) return;
     setBusy(true);
@@ -59,15 +83,51 @@ function BoxCard({ box, balance, monthKey, onChange }) {
     finally { setBusy(false); }
   };
 
+  if (editing) {
+    return (
+      <div className="mega-panel overflow-hidden">
+        <div className="mega-strip flex items-center justify-between px-3 py-1.5" style={{ backgroundColor: color }}>
+          <span className="font-pixel text-[8px] uppercase tracking-wider text-black/80">EDITAR CAIXINHA</span>
+          <button onClick={() => setEditing(false)} className="text-black/70 hover:text-black"><X size={13} /></button>
+        </div>
+        <div className="space-y-2 p-3">
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nome"
+            className="w-full rounded border border-stone-700 bg-black px-2 py-1.5 text-sm text-white outline-none focus:border-amber-500" />
+          <label className="block text-[10px] uppercase tracking-wide text-stone-500">Meta (R$)</label>
+          <input type="number" value={goal} onChange={(e) => setGoal(e.target.value)}
+            className="w-full rounded border border-stone-700 bg-black px-2 py-1.5 font-arcade text-lg text-white outline-none focus:border-amber-500" />
+          <label className="block text-[10px] uppercase tracking-wide text-stone-500">Saldo em {monthKeyLabel(monthKey)} (R$)</label>
+          <input type="number" value={setBal} onChange={(e) => setSetBal(e.target.value)}
+            className="w-full rounded border border-stone-700 bg-black px-2 py-1.5 font-arcade text-lg text-emerald-300 outline-none focus:border-amber-500" />
+          <div className="flex items-center gap-2 pt-1">
+            {COLORS.map((c) => (
+              <button key={c} onClick={() => setColor(c)} style={{ backgroundColor: c }}
+                className={`h-6 w-6 border-2 border-black transition ${color === c ? 'ring-2 ring-white' : ''}`} />
+            ))}
+          </div>
+          <button onClick={saveEdit} disabled={busy}
+            className="mega-btn mt-1 flex w-full items-center justify-center gap-2 rounded bg-amber-500 py-2 text-[10px] text-black disabled:opacity-40">
+            <Check size={14} /> SALVAR
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="mega-panel mega-scanlines overflow-hidden">
       <div className="mega-strip flex items-center justify-between px-3 py-1.5" style={{ backgroundColor: box.color }}>
         <span className="flex items-center gap-1.5 font-pixel text-[8px] uppercase tracking-wider text-black/80">
           <BoxIcon name={box.icon} size={11} /> {box.name}
         </span>
-        <button onClick={remove} disabled={busy} className="text-black/60 hover:text-black" title="Excluir">
-          <Trash2 size={13} />
-        </button>
+        <div className="flex items-center gap-1">
+          <button onClick={openEdit} disabled={busy} className="text-black/60 hover:text-black" title="Editar / definir saldo">
+            <Pencil size={12} />
+          </button>
+          <button onClick={remove} disabled={busy} className="text-black/60 hover:text-black" title="Excluir">
+            <Trash2 size={13} />
+          </button>
+        </div>
       </div>
 
       <div className="p-3">
